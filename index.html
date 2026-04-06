@@ -87,6 +87,19 @@ html,body{height:100%;background:var(--bg);color:var(--text);font-family:var(--s
 .export-banner{background:rgba(240,160,32,.1);border:1px solid rgba(240,160,32,.25);border-radius:var(--r);padding:10px 13px;margin-bottom:12px;display:flex;align-items:center;justify-content:space-between;gap:8px}
 .export-banner p{font-size:12px;color:var(--warn);flex:1}
 ::-webkit-scrollbar{width:3px}::-webkit-scrollbar-thumb{background:var(--border2);border-radius:2px}
+.gantt-wrap{overflow-x:auto;padding-bottom:8px}
+.gantt-table{border-collapse:collapse;min-width:100%}
+.gantt-table th{font-family:var(--mono);font-size:9px;color:var(--muted);padding:4px 3px;text-align:center;white-space:nowrap;border-bottom:1px solid var(--border)}
+.gantt-table td.label{font-size:11px;padding:4px 8px 4px 0;white-space:nowrap;max-width:120px;overflow:hidden;text-overflow:ellipsis;color:var(--text)}
+.gantt-table td.cell{width:18px;padding:2px 1px}
+.gantt-bar{height:12px;border-radius:3px}
+.gantt-row td{border-bottom:1px solid var(--border)}
+.search-hit{background:var(--bg2);border:1px solid var(--border);border-radius:var(--r);padding:11px 13px;margin-bottom:7px;cursor:pointer}
+.search-hit:active{border-color:var(--accent)}
+.search-hit-title{font-size:13px;font-weight:500}
+.search-hit-meta{font-size:11px;color:var(--muted);margin-top:3px}
+.search-hit-snippet{font-size:12px;color:var(--muted2);margin-top:4px;font-style:italic}
+.hl{background:rgba(61,142,240,.25);color:var(--accent);border-radius:2px;padding:0 2px}
 input[type=file]{display:none}
 </style>
 </head>
@@ -107,6 +120,7 @@ input[type=file]{display:none}
   <button class="nb" onclick="sw('cal')" id="nb-cal"><i>📅</i>Calendário</button>
   <button class="nb" onclick="sw('visits')" id="nb-visits"><i>📋</i>Visitas</button>
   <button class="nb" onclick="sw('snag')" id="nb-snag"><i>⚠️</i>Snag</button>
+  <button class="nb" onclick="sw('search')" id="nb-search"><i>🔍</i>Pesquisa</button>
   <button class="nb" onclick="sw('reports')" id="nb-reports"><i>📄</i>Relatórios</button>
 </nav>
 <div class="cnt">
@@ -132,7 +146,10 @@ input[type=file]{display:none}
 <div class="view" id="view-cal">
   <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px">
     <div class="stitle" style="margin:0">Calendário</div>
-    <button class="btn bs bsm" onclick="openAddMilestone()">+ Marco</button>
+    <div style="display:flex;gap:6px">
+      <button class="btn bs bsm" id="btn-gantt" onclick="toggleGantt()">📊 Gantt</button>
+      <button class="btn bs bsm" onclick="openAddMilestone()">+ Marco</button>
+    </div>
   </div>
   <div id="cal-content"></div>
 </div>
@@ -157,6 +174,21 @@ input[type=file]{display:none}
   <div id="snag-list"></div>
 </div>
 
+<!-- PESQUISA -->
+<div class="view" id="view-search">
+  <div class="stitle" style="margin-bottom:10px">Pesquisa — Visitas &amp; Calendário</div>
+  <div class="fg" style="margin-bottom:8px">
+    <input type="text" class="fi" id="search-visits-q" placeholder="Pesquisar em visitas e marcos..." oninput="doSearchVisits(this.value)">
+  </div>
+  <div id="search-visits-results"></div>
+  <div class="div" style="margin:16px 0"></div>
+  <div class="stitle" style="margin-bottom:10px">Pesquisa — Snag list</div>
+  <div class="fg" style="margin-bottom:8px">
+    <input type="text" class="fi" id="search-snag-q" placeholder="Pesquisar em snag list..." oninput="doSearchSnag(this.value)">
+  </div>
+  <div id="search-snag-results"></div>
+</div>
+
 <!-- RELATÓRIOS -->
 <div class="view" id="view-reports">
   <div id="export-banner-wrap"></div>
@@ -179,11 +211,13 @@ input[type=file]{display:none}
   <div class="div"></div>
   <div class="stitle">Exportar dados</div>
   <button class="btn bs bfull" style="margin-bottom:8px" onclick="exportZip()">📦 Exportar fotos ZIP (por local)</button>
-  <button class="btn bs bfull" onclick="exportJSON()">💾 Backup completo JSON</button>
+  <button class="btn bs bfull" onclick="exportJSON()">💾 Exportar backup JSON</button>
+  <button class="btn bs bfull" style="margin-top:8px" onclick="document.getElementById('import-input').click()">📥 Importar backup JSON</button>
+  <input type="file" id="import-input" accept=".json" onchange="importJSON(this)">
 </div>
 
 </div><!-- /cnt -->
-<button class="fab" id="fab" onclick="fabAction()">+</button>
+<button class="fab" id="fab">+</button>
 </div><!-- /app -->
 
 <!-- MODAL: Visita -->
@@ -393,7 +427,7 @@ function sw(v){
   document.getElementById('view-'+v).classList.add('on');
   document.getElementById('nb-'+v).classList.add('on');
   const fab=document.getElementById('fab');
-  if(v==='reports'){fab.style.display='none';}
+  if(v==='reports'||v==='search'){fab.style.display='none';}
   else{fab.style.display='flex';fab.onclick=v==='snag'?openSnagModal:fabAction;}
   if(v==='home')renderHome();
   if(v==='cal')renderCal();
@@ -429,6 +463,7 @@ function renderHome(){
 
 // CALENDAR
 function renderCal(){
+  if(ganttMode){renderGantt();return;}
   const t=todayStr();const all=allMs();
   const allDates=new Set([...all.map(m=>m.date),...DB.visits.map(v=>v.date)]);
   const sorted=[...allDates].sort();
@@ -721,8 +756,159 @@ function openMo(id){document.getElementById(id).classList.add('on');}
 function closeMo(id){document.getElementById(id).classList.remove('on');}
 document.querySelectorAll('.mo').forEach(o=>o.addEventListener('click',function(e){if(e.target===this)this.classList.remove('on');}));
 
+// ═══ GANTT ═══
+let ganttMode=false;
+function toggleGantt(){
+  ganttMode=!ganttMode;
+  document.getElementById('btn-gantt').classList.toggle('bp',ganttMode);
+  document.getElementById('btn-gantt').classList.toggle('bs',!ganttMode);
+  renderCal();
+}
+
+function renderGantt(){
+  const ms=allMs().sort((a,b)=>a.date.localeCompare(b.date));
+  if(!ms.length){document.getElementById('cal-content').innerHTML='<div class="empty"><i>📅</i><p>Sem marcos.</p></div>';return;}
+  const startD=new Date(ms[0].date+'T00:00:00');
+  const endD=new Date(ms[ms.length-1].date+'T00:00:00');
+  endD.setDate(endD.getDate()+7);
+  const totalDays=Math.round((endD-startD)/86400000);
+  // Build week columns
+  const weeks=[];let d=new Date(startD);d.setDate(d.getDate()-d.getDay()+1);
+  while(d<=endD){weeks.push(new Date(d));d=new Date(d);d.setDate(d.getDate()+7);}
+  const today=new Date(todayStr()+'T00:00:00');
+
+  let html='<div class="gantt-wrap"><table class="gantt-table"><thead><tr><th style="text-align:left;min-width:110px">Marco</th>';
+  weeks.forEach(w=>{html+=`<th colspan="7" style="min-width:${7*18}px">${w.toLocaleDateString('pt-PT',{day:'numeric',month:'short'})}</th>`;});
+  html+='</tr></thead><tbody>';
+
+  // Group by month
+  let curMonth='';
+  ms.forEach(m=>{
+    const mDate=new Date(m.date+'T00:00:00');
+    const mo=m.date.substring(0,7);
+    if(mo!==curMonth){
+      curMonth=mo;
+      const moLabel=mDate.toLocaleDateString('pt-PT',{month:'long',year:'numeric'});
+      html+=`<tr><td class="label" style="color:var(--muted);font-size:9px;text-transform:uppercase;letter-spacing:.08em;padding-top:10px" colspan="${weeks.length*7+1}">${moLabel}</td></tr>`;
+    }
+    const offset=Math.round((mDate-startD)/86400000);
+    const barColor=m.type==='payment'?'var(--warn)':m.type==='milestone'?'var(--danger)':m.type==='visit'?'var(--accent)':'var(--purple)';
+    const isToday=m.date===todayStr();
+    const hasVisit=DB.visits.find(v=>v.date===m.date);
+    html+=`<tr class="gantt-row" onclick="showDay('${m.date}')" style="cursor:pointer">`;
+    html+=`<td class="label" title="${m.label}">${isToday?'▶ ':''}<span style="${hasVisit?'color:var(--accent2)':''}${isToday?'font-weight:600':''}">${m.label.replace(/^[^ ]+ /,'')}</span></td>`;
+    // cells
+    const totalCells=weeks.length*7;
+    for(let i=0;i<totalCells;i++){
+      const cellDate=new Date(startD);cellDate.setDate(startD.getDate()+i);
+      const isBar=Math.abs(Math.round((cellDate-mDate)/86400000))===0;
+      const isTodayCell=cellDate.toISOString().split('T')[0]===todayStr();
+      html+=`<td class="cell" style="${isTodayCell?'background:rgba(61,142,240,.08)':''}">`;
+      if(isBar)html+=`<div class="gantt-bar" style="background:${barColor};width:16px"></div>`;
+      html+='</td>';
+    }
+    html+='</tr>';
+  });
+  html+='</tbody></table></div>';
+  document.getElementById('cal-content').innerHTML=html;
+}
+
+// ═══ SEARCH ═══
+function doSearchVisits(q){
+  const res=document.getElementById('search-visits-results');
+  if(!q||q.trim().length<2){res.innerHTML='<div style="font-size:12px;color:var(--muted);padding:8px 0">Escreve pelo menos 2 caracteres.</div>';return;}
+  const qLow=q.toLowerCase();
+  const hits=[];
+
+  // Search milestones
+  allMs().forEach(m=>{
+    if(m.label.toLowerCase().includes(qLow)||(m.sub||'').toLowerCase().includes(qLow)){
+      hits.push({type:'marco',date:m.date,title:m.label,snippet:m.sub||'',id:m.id,mtype:m.type});
+    }
+  });
+
+  // Search visits
+  DB.visits.forEach(v=>{
+    const fields=[v.done,v.pending,v.decisions,v.notes,v.people].filter(Boolean).join(' ');
+    const locFields=(v.locations||[]).map(l=>l.name+' '+l.note).join(' ');
+    const all=(fields+' '+locFields).toLowerCase();
+    if(all.includes(qLow)){
+      const snippet=getSnippet(fields+' '+locFields,q);
+      hits.push({type:'visita',date:v.date,title:`${tlabel(v.type)} · ${fmtD(v.date)}`,snippet,id:v.id,mtype:'visit'});
+    }
+  });
+
+  hits.sort((a,b)=>b.date.localeCompare(a.date));
+
+  if(!hits.length){res.innerHTML='<div class="empty"><i>🔍</i><p>Sem resultados para "'+q+'".</p></div>';return;}
+  res.innerHTML=hits.map(h=>`
+    <div class="search-hit" onclick="${h.type==='visita'?`showVisitDetail('${h.id}')`:h.type==='marco'?`showDay('${h.date}')`:``}">
+      <div style="display:flex;justify-content:space-between;align-items:center;gap:8px">
+        <div class="search-hit-title">${highlight(h.title,q)}</div>
+        <span class="tag ${h.type==='visita'?'tg':ttag(h.mtype)}" style="font-size:9px;flex-shrink:0">${h.type}</span>
+      </div>
+      <div class="search-hit-meta">${fmtD(h.date)}</div>
+      ${h.snippet?`<div class="search-hit-snippet">${highlight(h.snippet,q)}</div>`:''}
+    </div>`).join('');
+}
+
+function doSearchSnag(q){
+  const res=document.getElementById('search-snag-results');
+  if(!q||q.trim().length<2){res.innerHTML='<div style="font-size:12px;color:var(--muted);padding:8px 0">Escreve pelo menos 2 caracteres.</div>';return;}
+  const qLow=q.toLowerCase();
+  const hits=DB.snags.filter(s=>{
+    const all=[s.desc,s.loc,s.owner,s.notes].filter(Boolean).join(' ').toLowerCase();
+    return all.includes(qLow);
+  });
+  if(!hits.length){res.innerHTML='<div class="empty"><i>🔍</i><p>Sem resultados para "'+q+'".</p></div>';return;}
+  res.innerHTML=hits.map(s=>`
+    <div class="search-hit" onclick="sw('snag')">
+      <div style="display:flex;justify-content:space-between;align-items:center;gap:8px">
+        <div class="search-hit-title">${highlight(s.desc,q)}</div>
+        <span class="tag ${ptag(s.pri)}" style="font-size:9px;flex-shrink:0">${plabel(s.pri)}</span>
+      </div>
+      <div class="search-hit-meta">${s.loc?'📍 '+s.loc+' · ':''}${s.owner?'👤 '+s.owner+' · ':''}${s.status==='open'?'Em aberto':'Resolvido'}</div>
+      ${s.notes?`<div class="search-hit-snippet">${highlight(s.notes,q)}</div>`:''}
+    </div>`).join('');
+}
+
+function getSnippet(text,q){
+  const i=text.toLowerCase().indexOf(q.toLowerCase());
+  if(i<0)return text.substring(0,80);
+  const start=Math.max(0,i-30);const end=Math.min(text.length,i+q.length+60);
+  return (start>0?'...':'')+text.substring(start,end)+(end<text.length?'...':'');
+}
+function highlight(text,q){
+  if(!q||!text)return text||'';
+  const ql=q.toLowerCase();const tl=text.toLowerCase();const idx=tl.indexOf(ql);
+  if(idx<0)return text;
+  return text.substring(0,idx)+'<span class="hl">'+text.substring(idx,idx+q.length)+'</span>'+highlight(text.substring(idx+q.length),q);
+}
+
 load();
 const now=new Date();
+function importJSON(input){
+  const file=input.files[0];if(!file)return;
+  const r=new FileReader();
+  r.onload=function(e){
+    try{
+      const data=JSON.parse(e.target.result);
+      if(!data.visits&&!data.snags&&!data.milestones){alert('Ficheiro inválido.');return;}
+      if(!confirm('Isto vai substituir todos os dados atuais. Confirmas?')){input.value='';return;}
+      DB.visits=data.visits||[];
+      DB.snags=data.snags||[];
+      DB.milestones=data.milestones||null;
+      if(!DB.milestones){DB.milestones=DEF_MS.map(m=>({...m,id:uid(),isDefault:true}));}
+      save();
+      renderHome();
+      alert('Dados importados com sucesso!');
+    }catch(ex){alert('Erro ao ler ficheiro.');}
+    input.value='';
+  };
+  r.readAsText(file);
+}
+
+document.getElementById('fab').onclick=fabAction;
 document.getElementById('hdr-date').innerHTML=now.toLocaleDateString('pt-PT',{weekday:'short',day:'numeric',month:'short'})+`<br><span style="color:var(--muted);font-size:9px">${now.getFullYear()}</span>`;
 renderHome();
 </script>
