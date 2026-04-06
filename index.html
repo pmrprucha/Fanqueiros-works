@@ -372,7 +372,20 @@ function load(){try{const s=localStorage.getItem('obra_fanq2');if(s){const d=JSO
 // If first load, seed milestones from defaults
 if(!DB.milestones){DB.milestones=DEF_MS.map(m=>({...m,id:uid(),isDefault:true}));save();}
 function save(){try{localStorage.setItem('obra_fanq2',JSON.stringify(DB));}catch(e){}}
-function fileToB64(f){return new Promise(r=>{const x=new FileReader();x.onload=e=>r(e.target.result);x.readAsDataURL(f);})}
+function fileToB64(f){
+  return new Promise(r=>{
+    const img=new Image();const url=URL.createObjectURL(f);
+    img.onload=()=>{
+      const MAX=800;let w=img.width,h=img.height;
+      if(w>MAX){h=Math.round(h*MAX/w);w=MAX;}
+      if(h>MAX){w=Math.round(w*MAX/h);h=MAX;}
+      const c=document.createElement('canvas');c.width=w;c.height=h;
+      c.getContext('2d').drawImage(img,0,0,w,h);
+      URL.revokeObjectURL(url);
+      r(c.toDataURL('image/jpeg',0.7));
+    };img.src=url;
+  });
+}
 
 function sw(v){
   document.querySelectorAll('.view').forEach(x=>x.classList.remove('on'));
@@ -536,8 +549,17 @@ function renderVisitLocs(){
 function delLoc(i){visitLocs.splice(i,1);renderVisitLocs();}
 function delLocPh(li,pi){visitLocs[li].photos.splice(pi,1);renderVisitLocs();}
 function addLocPhs(li,input){
-  const files=[...input.files];const label=prompt('Legenda (opcional):')||'';
-  Promise.all(files.map(f=>fileToB64(f))).then(res=>{res.forEach((data,i)=>{visitLocs[li].photos.push({id:uid(),name:label||files[i].name,data});});renderVisitLocs();input.value='';});
+  const files=[...input.files];
+  const label=prompt('Legenda (opcional):')||'';
+  let i=0;
+  function nextPh(){
+    if(i>=files.length){renderVisitLocs();input.value='';return;}
+    fileToB64(files[i]).then(data=>{
+      visitLocs[li].photos.push({id:uid(),name:label||files[i].name,data});
+      i++;nextPh();
+    });
+  }
+  nextPh();
 }
 function saveVisit(){
   const dur=document.getElementById('v-duration').value;
@@ -577,8 +599,17 @@ function renderSnagPhs(){
   document.getElementById('sn-photos-grid').innerHTML=snagPhotoBuf.map((p,i)=>`<div class="ph-thumb"><img src="${p.data}" alt=""><div class="ph-label">${p.name||''}</div><button class="ph-del" onclick="snagPhotoBuf.splice(${i},1);renderSnagPhs()">✕</button></div>`).join('')+`<div class="ph-thumb ph-add" onclick="document.getElementById('sn-photo-input').click()">＋</div>`;
 }
 function addSnagPhotos(input){
-  const files=[...input.files];const label=prompt('Legenda (opcional):')||'';
-  Promise.all(files.map(f=>fileToB64(f))).then(res=>{res.forEach((data,i)=>{snagPhotoBuf.push({id:uid(),name:label||files[i].name,data});});renderSnagPhs();input.value='';});
+  const files=[...input.files];
+  const label=prompt('Legenda (opcional):')||'';
+  let i=0;
+  function nextPh(){
+    if(i>=files.length){renderSnagPhs();input.value='';return;}
+    fileToB64(files[i]).then(data=>{
+      snagPhotoBuf.push({id:uid(),name:label||files[i].name,data});
+      i++;nextPh();
+    });
+  }
+  nextPh();
 }
 function saveSnag(){
   const eid=document.getElementById('sn-id').value;
